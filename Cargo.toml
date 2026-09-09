@@ -1,0 +1,28 @@
+[package]
+name = "coda"
+version = "0.1.0"
+edition = "2021"
+description = "Minimal terminal music player"
+license = "MIT"
+readme = "README.md"
+
+[dependencies]
+anyhow = "1"
+crossterm = "0.28"
+dirs = "6"
+lofty = "0.22"
+rand = "0.9"
+ratatui = "0.29"
+rodio = { version = "0.20", default-features = true }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+walkdir = "2"
+fs2 = "0.4"
+souvlaki = "0.8"
+thiserror = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = "z"
