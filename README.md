@@ -15,14 +15,19 @@ Minimal terminal music player for local files.
 
 ## Download
 
-Linux x86_64 builds are on the [Releases](https://github.com/Pabloidd/Coda/releases) page. Take `coda-v*-linux-x86_64`. The "Source code" archives are the code, not the player.
+The player is a single file on the [release page](https://github.com/Pabloidd/Coda/releases/tag/v0.1.0): **coda-v0.1.0-linux-x86_64**.
+
+GitHub also puts "Source code (zip)" and "Source code (tar.gz)" on that page. Those are the code, not a program you can run. Download the file named `coda-v0.1.0-linux-x86_64`.
 
 ```bash
 chmod +x coda-v0.1.0-linux-x86_64
 install -m 755 coda-v0.1.0-linux-x86_64 ~/.local/bin/coda
+coda
 ```
 
-Runtime libraries: `libasound.so.2` and `libdbus-1.so.3`. glibc 2.35 or newer.
+It needs `libasound.so.2`, `libdbus-1.so.3`, and glibc 2.35 or newer (Ubuntu 22.04, Fedora 35, and later). Fedora packages: `alsa-lib` and `dbus`. Debian and Ubuntu: `libasound2` and `libdbus-1-3`.
+
+`coda-v0.1.0-linux-x86_64.sha256` is the checksum of that same file. Newer versions keep the same name with a new tag, on the [Releases](https://github.com/Pabloidd/Coda/releases) page.
 
 ## Build from source
 
