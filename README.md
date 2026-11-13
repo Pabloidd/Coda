@@ -13,18 +13,25 @@ Minimal terminal music player for local files.
 - Single instance
 - MPRIS metadata for DE widgets (no global hotkeys in v1)
 
-## Run
+## Download
 
-Needs system deps (Fedora): `dbus-devel alsa-lib-devel pkgconf-pkg-config gcc`.
+Linux x86_64 builds are on the [Releases](https://github.com/Pabloidd/Coda/releases) page. Take `coda-v*-linux-x86_64`. The "Source code" archives are the code, not the player.
 
 ```bash
-cd ~/workspace/Projects/coda
-cargo build --release
-cp -f target/release/coda ~/.local/bin/coda
-# or: cargo run --release
+chmod +x coda-v0.1.0-linux-x86_64
+install -m 755 coda-v0.1.0-linux-x86_64 ~/.local/bin/coda
 ```
 
-No Nix required. Desktop entry: `~/.local/share/applications/coda.desktop` → Ptyxis + `~/.local/bin/coda`.
+Runtime libraries: `libasound.so.2` and `libdbus-1.so.3`. glibc 2.35 or newer.
+
+## Build from source
+
+Needs a C toolchain, pkg-config, ALSA, and dbus headers (Fedora: `dbus-devel alsa-lib-devel pkgconf-pkg-config gcc`).
+
+```bash
+cargo build --release
+install -m 755 target/release/coda ~/.local/bin/coda
+```
 
 Themes: `t` cycles `forest` ↔ `dawn` (persisted in config).
 
