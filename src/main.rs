@@ -8,6 +8,7 @@ mod mpris;
 mod player;
 mod playlist;
 mod single;
+mod theme;
 mod ui;
 
 use anyhow::Result;

@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::Lang;
+use crate::theme::Theme;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -13,6 +14,9 @@ pub struct Config {
     pub lang: Lang,
     pub volume: f32,
     pub repeat: RepeatMode,
+    /// UI color theme (`forest` dark green / `dawn` cream terminal).
+    #[serde(default)]
+    pub theme: Theme,
     /// After the user dismisses the first-run keymap overlay.
     #[serde(default)]
     pub help_seen: bool,
@@ -27,6 +31,7 @@ impl Default for Config {
             lang: Lang::from_env(),
             volume: 0.7,
             repeat: RepeatMode::Off,
+            theme: Theme::Forest,
             help_seen: false,
         }
     }
@@ -52,9 +57,7 @@ impl RepeatMode {
 
 impl Config {
     pub fn path() -> Result<PathBuf> {
-        let dir = dirs::config_dir()
-            .context("no config dir")?
-            .join("coda");
+        let dir = dirs::config_dir().context("no config dir")?.join("coda");
         fs::create_dir_all(&dir)?;
         Ok(dir.join("config.toml"))
     }
@@ -76,14 +79,14 @@ impl Config {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(path, toml::to_string_pretty(self)?)?;
+        let mut stored = self.clone();
+        stored.volume = (stored.volume.clamp(0.0, 1.0) * 100.0).round() / 100.0;
+        fs::write(path, toml::to_string_pretty(&stored)?)?;
         Ok(())
     }
 
     pub fn data_dir() -> Result<PathBuf> {
-        let dir = dirs::data_local_dir()
-            .context("no data dir")?
-            .join("coda");
+        let dir = dirs::data_local_dir().context("no data dir")?.join("coda");
         fs::create_dir_all(&dir)?;
         Ok(dir)
     }

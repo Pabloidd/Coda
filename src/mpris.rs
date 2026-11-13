@@ -1,9 +1,9 @@
-//! Non-blocking MPRIS bridge for Caelestia / playerctl.
+//! Non-blocking MPRIS bridge for GNOME Medialine / playerctl.
 //! UI thread never talks to D-Bus directly — a worker thread does.
 
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use souvlaki::{
     MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig,
@@ -14,16 +14,28 @@ pub struct Snapshot {
     pub title: String,
     pub artist: String,
     pub album: String,
+    /// Absolute path — used as unique art URL so clients notice track changes
+    /// (souvlaki hardcodes mpris:trackid to "/").
+    pub path: String,
+    pub cover: String,
     pub duration: Option<Duration>,
     pub position: Duration,
     pub playing: bool,
     pub paused: bool,
     pub has_track: bool,
+    pub volume: f32,
 }
 
 pub struct MprisBridge {
-    tx: Sender<Snapshot>,
+    tx: Option<Sender<Snapshot>>,
+    worker: Option<JoinHandle<()>>,
     pub events: Receiver<MediaControlEvent>,
+}
+
+impl Drop for MprisBridge {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
 }
 
 impl MprisBridge {
@@ -48,82 +60,115 @@ impl MprisBridge {
             return None;
         }
 
-        thread::Builder::new()
+        let worker = thread::Builder::new()
             .name("coda-mpris".into())
             .spawn(move || {
                 let mut last: Option<Snapshot> = None;
-                let mut last_push = Instant::now() - Duration::from_secs(10);
                 loop {
-                    // Coalesce to latest snapshot.
-                    let mut newest = None;
+                    // Block until the UI has something new. Dropping the sender ends the thread.
+                    let first = match snap_rx.recv() {
+                        Ok(s) => s,
+                        Err(_) => {
+                            let _ = controls.detach();
+                            return;
+                        }
+                    };
+                    let mut newest = first;
                     loop {
                         match snap_rx.try_recv() {
-                            Ok(s) => newest = Some(s),
+                            Ok(s) => newest = s,
                             Err(TryRecvError::Empty) => break,
-                            Err(TryRecvError::Disconnected) => return,
+                            Err(TryRecvError::Disconnected) => {
+                                let _ = controls.detach();
+                                return;
+                            }
                         }
                     }
+                    let s = newest;
 
-                    if let Some(s) = newest {
-                        let meta_changed = last
-                            .as_ref()
-                            .map(|l| {
-                                l.title != s.title
-                                    || l.artist != s.artist
-                                    || l.album != s.album
-                                    || l.has_track != s.has_track
-                            })
-                            .unwrap_or(true);
-                        let play_changed = last
-                            .as_ref()
-                            .map(|l| l.playing != s.playing || l.paused != s.paused)
-                            .unwrap_or(true);
-                        let due = last_push.elapsed() >= Duration::from_millis(500);
+                    let meta_changed = last.as_ref().is_none_or(|l| {
+                        l.title != s.title
+                            || l.artist != s.artist
+                            || l.album != s.album
+                            || l.path != s.path
+                            || l.cover != s.cover
+                            || l.has_track != s.has_track
+                            || l.duration != s.duration
+                    });
+                    let play_changed = last
+                        .as_ref()
+                        .is_none_or(|l| l.playing != s.playing || l.paused != s.paused);
+                    let volume_changed = last
+                        .as_ref()
+                        .is_none_or(|l| (l.volume - s.volume).abs() > 0.005);
+                    let pos_changed = last.as_ref().is_none_or(|l| {
+                        l.position.as_millis().abs_diff(s.position.as_millis()) >= 500
+                    });
 
-                        if meta_changed {
-                            let meta = if s.has_track {
-                                MediaMetadata {
-                                    title: Some(s.title.as_str()),
-                                    artist: Some(s.artist.as_str()),
-                                    album: Some(s.album.as_str()),
-                                    duration: s.duration,
-                                    ..Default::default()
-                                }
-                            } else {
-                                MediaMetadata::default()
-                            };
-                            let _ = controls.set_metadata(meta);
-                        }
-
-                        if meta_changed || play_changed || due {
-                            let progress = Some(MediaPosition(s.position));
-                            let playback = if !s.has_track {
-                                MediaPlayback::Stopped
-                            } else if s.paused {
-                                MediaPlayback::Paused { progress }
-                            } else if s.playing {
-                                MediaPlayback::Playing { progress }
-                            } else {
-                                MediaPlayback::Stopped
-                            };
-                            let _ = controls.set_playback(playback);
-                            last_push = Instant::now();
-                        }
-                        last = Some(s);
+                    if meta_changed {
+                        let cover = if s.has_track && !s.cover.is_empty() {
+                            Some(s.cover.as_str())
+                        } else {
+                            None
+                        };
+                        let meta = if s.has_track {
+                            MediaMetadata {
+                                title: Some(s.title.as_str()),
+                                artist: Some(s.artist.as_str()),
+                                album: Some(s.album.as_str()),
+                                cover_url: cover,
+                                duration: s.duration,
+                            }
+                        } else {
+                            MediaMetadata::default()
+                        };
+                        let _ = controls.set_metadata(meta);
                     }
 
-                    thread::sleep(Duration::from_millis(200));
+                    if meta_changed || play_changed || pos_changed {
+                        let progress = Some(MediaPosition(s.position));
+                        let playback = if !s.has_track {
+                            MediaPlayback::Stopped
+                        } else if s.paused {
+                            MediaPlayback::Paused { progress }
+                        } else if s.playing {
+                            MediaPlayback::Playing { progress }
+                        } else {
+                            MediaPlayback::Stopped
+                        };
+                        let _ = controls.set_playback(playback);
+                    }
+                    if volume_changed {
+                        let _ = controls.set_volume(f64::from(s.volume));
+                    }
+                    last = Some(s);
                 }
             })
             .ok()?;
 
         Some(Self {
-            tx: snap_tx,
+            tx: Some(snap_tx),
+            worker: Some(worker),
             events: ev_rx,
         })
     }
 
     pub fn publish(&self, snap: Snapshot) {
-        let _ = self.tx.send(snap);
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(snap);
+        }
+    }
+
+    /// Drop the sender so the worker exits, then join it (bounded wait).
+    pub fn shutdown(&mut self) {
+        self.tx.take();
+        if let Some(handle) = self.worker.take() {
+            let (done_tx, done_rx) = mpsc::channel();
+            thread::spawn(move || {
+                let _ = handle.join();
+                let _ = done_tx.send(());
+            });
+            let _ = done_rx.recv_timeout(Duration::from_millis(800));
+        }
     }
 }

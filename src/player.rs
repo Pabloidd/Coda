@@ -2,19 +2,40 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
+use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 
 struct Shared {
     sink: Option<Sink>,
     current: Option<PathBuf>,
     volume: f32,
-    /// Elapsed playback before the current running segment.
-    base_pos: Duration,
-    segment_start: Option<Instant>,
     paused: bool,
+}
+
+/// One lock, one snapshot. The UI loop should not query the sink field by field.
+#[derive(Clone, Copy)]
+pub struct Pulse {
+    pub empty: bool,
+    pub paused: bool,
+    pub has_track: bool,
+    pub playing: bool,
+    pub position: Duration,
+    pub volume: f32,
+}
+
+impl Default for Pulse {
+    fn default() -> Self {
+        Self {
+            empty: true,
+            paused: false,
+            has_track: false,
+            playing: false,
+            position: Duration::ZERO,
+            volume: 0.0,
+        }
+    }
 }
 
 pub struct Player {
@@ -23,19 +44,24 @@ pub struct Player {
     inner: Arc<Mutex<Shared>>,
 }
 
+impl Drop for Player {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
 impl Player {
     pub fn new(volume: f32) -> Result<Self> {
         let (stream, handle) =
             OutputStream::try_default().context("no audio output (PipeWire/ALSA)")?;
+        let volume = quantize_volume(volume);
         Ok(Self {
             _stream: stream,
             handle,
             inner: Arc::new(Mutex::new(Shared {
                 sink: None,
                 current: None,
-                volume: volume.clamp(0.0, 1.0),
-                base_pos: Duration::ZERO,
-                segment_start: None,
+                volume,
                 paused: false,
             })),
         })
@@ -56,8 +82,6 @@ impl Player {
         }
         g.sink = Some(sink);
         g.current = Some(path.to_path_buf());
-        g.base_pos = Duration::ZERO;
-        g.segment_start = Some(Instant::now());
         g.paused = false;
         Ok(())
     }
@@ -68,64 +92,44 @@ impl Player {
             sink.stop();
         }
         g.current = None;
-        g.base_pos = Duration::ZERO;
-        g.segment_start = None;
         g.paused = false;
     }
 
     pub fn toggle_pause(&self) {
         let mut g = self.inner.lock().unwrap();
-        if g.sink.is_none() {
+        let Some(sink) = g.sink.as_ref() else {
             return;
-        }
+        };
         if g.paused {
-            if let Some(sink) = g.sink.as_ref() {
-                sink.play();
-            }
-            g.segment_start = Some(Instant::now());
+            sink.play();
             g.paused = false;
         } else {
-            let extra = g
-                .segment_start
-                .map(|t| t.elapsed())
-                .unwrap_or(Duration::ZERO);
-            g.base_pos += extra;
-            g.segment_start = None;
-            if let Some(sink) = g.sink.as_ref() {
-                sink.pause();
-            }
+            sink.pause();
             g.paused = true;
         }
     }
 
-    pub fn is_paused(&self) -> bool {
-        self.inner.lock().unwrap().paused
-    }
-
-    pub fn is_empty(&self) -> bool {
+    pub fn pulse(&self) -> Pulse {
         let g = self.inner.lock().unwrap();
-        g.sink.as_ref().map(|s| s.empty()).unwrap_or(true)
-    }
-
-    pub fn is_playing(&self) -> bool {
-        let g = self.inner.lock().unwrap();
-        match g.sink.as_ref() {
-            Some(s) => !s.empty() && !g.paused,
-            None => false,
+        let empty = g.sink.as_ref().map(|s| s.empty()).unwrap_or(true);
+        let position = g
+            .sink
+            .as_ref()
+            .map(|s| s.get_pos())
+            .unwrap_or(Duration::ZERO);
+        let has_track = g.sink.is_some() && g.current.is_some();
+        Pulse {
+            empty,
+            paused: g.paused,
+            has_track,
+            playing: has_track && !empty && !g.paused,
+            position,
+            volume: g.volume,
         }
     }
 
-    pub fn has_track(&self) -> bool {
-        let g = self.inner.lock().unwrap();
-        g.sink.is_some() && g.current.is_some()
-    }
-
-    pub fn current_path(&self) -> Option<PathBuf> {
-        self.inner.lock().unwrap().current.clone()
-    }
-
     pub fn set_volume(&self, vol: f32) {
-        let vol = vol.clamp(0.0, 1.0);
+        let vol = quantize_volume(vol);
         let mut g = self.inner.lock().unwrap();
         g.volume = vol;
         if let Some(sink) = g.sink.as_ref() {
@@ -133,76 +137,74 @@ impl Player {
         }
     }
 
-    pub fn volume(&self) -> f32 {
-        self.inner.lock().unwrap().volume
-    }
-
     pub fn adjust_volume(&self, delta: f32) {
-        let v = self.volume() + delta;
-        self.set_volume(v);
+        let current = self.inner.lock().unwrap().volume;
+        self.set_volume(current + delta);
     }
 
-    pub fn position(&self) -> Duration {
-        let g = self.inner.lock().unwrap();
-        let mut pos = g.base_pos;
-        if !g.paused {
-            if let Some(start) = g.segment_start {
-                pos += start.elapsed();
+    /// Seek without decoding the skipped region on the UI thread.
+    pub fn seek_to(&self, mut pos: Duration, duration: Option<Duration>) -> Result<()> {
+        if let Some(limit) = duration {
+            if pos > limit {
+                pos = limit;
             }
         }
-        pos
-    }
-
-    /// Approximate seek by restarting from an offset (best-effort, may hitch briefly).
-    pub fn seek_rel(&self, delta: i64, duration: Option<Duration>) -> Result<()> {
-        let (path, was_paused, vol, mut pos) = {
+        let (path, paused, vol, seeked) = {
             let g = self.inner.lock().unwrap();
-            let path = match g.current.clone() {
-                Some(p) => p,
-                None => return Ok(()),
+            let Some(path) = g.current.clone() else {
+                return Ok(());
             };
-            let mut pos = g.base_pos;
-            if !g.paused {
-                if let Some(start) = g.segment_start {
-                    pos += start.elapsed();
-                }
-            }
-            (path, g.paused, g.volume, pos)
+            let seeked = g
+                .sink
+                .as_ref()
+                .and_then(|sink| sink.try_seek(pos).ok())
+                .is_some();
+            (path, g.paused, g.volume, seeked)
         };
-
-        let mut secs = pos.as_secs_f64() + delta as f64;
-        if secs < 0.0 {
-            secs = 0.0;
+        if seeked {
+            return Ok(());
         }
-        if let Some(d) = duration {
-            secs = secs.min(d.as_secs_f64());
-        }
-        pos = Duration::from_secs_f64(secs);
 
         let file = File::open(&path)?;
         let source = Decoder::new(BufReader::new(file))?;
-        // Prefer byte-ish skip when possible; this can hitch briefly on large offsets.
-        let skipped = source.skip_duration(pos);
-
         let sink = Sink::try_new(&self.handle)?;
         sink.set_volume(vol);
-        sink.append(skipped);
-        if was_paused {
+        sink.append(source);
+        let seeked = sink.try_seek(pos).is_ok();
+        if paused {
             sink.pause();
         }
-
         let mut g = self.inner.lock().unwrap();
         if let Some(old) = g.sink.take() {
             old.stop();
         }
         g.sink = Some(sink);
-        g.base_pos = pos;
-        g.paused = was_paused;
-        g.segment_start = if was_paused {
-            None
-        } else {
-            Some(Instant::now())
-        };
+        g.paused = paused;
+        if !seeked {
+            anyhow::bail!("seek unsupported for this file");
+        }
         Ok(())
     }
+
+    pub fn seek_by(
+        &self,
+        delta: Duration,
+        forward: bool,
+        duration: Option<Duration>,
+    ) -> Result<()> {
+        let pos = self.pulse().position;
+        let target = if forward {
+            pos.saturating_add(delta)
+        } else {
+            pos.saturating_sub(delta)
+        };
+        self.seek_to(target, duration)
+    }
+}
+
+fn quantize_volume(vol: f32) -> f32 {
+    if !vol.is_finite() {
+        return 0.0;
+    }
+    ((vol.clamp(0.0, 1.0) * 100.0).round() / 100.0).clamp(0.0, 1.0)
 }

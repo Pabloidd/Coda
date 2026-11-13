@@ -80,16 +80,47 @@ impl T {
         }
     }
 
-    pub fn footer_hints(lang: Lang) -> &'static str {
+    pub fn hints_library(lang: Lang) -> &'static str {
         match lang {
-            Lang::En => {
-                "Space play/pause · Enter play · n/p next/prev · ←/→ seek · -/= vol\n\
-                 a add · s shuffle · / find · Tab panels · ? keys · q quit"
-            }
+            Lang::En => "Enter play · a queue · / find · Tab panel · ' now · ? · q",
+            Lang::Ru => "Enter играть · a в очередь · / поиск · Tab панель · ' к треку · ? · q",
+        }
+    }
+
+    pub fn hints_queue(lang: Lang) -> &'static str {
+        match lang {
+            Lang::En => "Enter play · x drop · Shift↑↓ move · s shuffle · ' now · ? · q",
             Lang::Ru => {
-                "Space пауза · Enter играть · n/p след/пред · ←/→ перемотка · -/= громкость\n\
-                 a в очередь · s перемешать · / поиск · Tab панели · ? клавиши · q выход"
+                "Enter играть · x убрать · Shift↑↓ двигать · s перемешать · ' к треку · ? · q"
             }
+        }
+    }
+
+    pub fn hints_playlists(lang: Lang) -> &'static str {
+        match lang {
+            Lang::En => "Enter open · d delete · l load · ? · q",
+            Lang::Ru => "Enter открыть · d удалить · l загрузить · ? · q",
+        }
+    }
+
+    pub fn up_next(lang: Lang) -> &'static str {
+        match lang {
+            Lang::En => "next",
+            Lang::Ru => "далее",
+        }
+    }
+
+    pub fn empty_queue(lang: Lang) -> &'static str {
+        match lang {
+            Lang::En => "press a in the library to queue a track",
+            Lang::Ru => "a в библиотеке — добавить трек",
+        }
+    }
+
+    pub fn empty_playlists(lang: Lang) -> &'static str {
+        match lang {
+            Lang::En => "S saves the queue as a playlist",
+            Lang::Ru => "S — сохранить очередь как плейлист",
         }
     }
 
@@ -151,8 +182,113 @@ impl T {
 
     pub fn empty_library(lang: Lang) -> &'static str {
         match lang {
-            Lang::En => "No audio files in Music folder",
-            Lang::Ru => "Нет аудиофайлов в папке Music",
+            Lang::En => "No audio files in the music folder",
+            Lang::Ru => "В папке с музыкой нет аудиофайлов",
+        }
+    }
+
+    pub fn queue_cleared(lang: Lang) -> &'static str {
+        match lang {
+            Lang::En => "queue cleared",
+            Lang::Ru => "очередь очищена",
+        }
+    }
+
+    pub fn track_removed(lang: Lang) -> &'static str {
+        match lang {
+            Lang::En => "removed from queue",
+            Lang::Ru => "убрано из очереди",
+        }
+    }
+
+    pub fn volume(lang: Lang, pct: u8) -> String {
+        match lang {
+            Lang::En => format!("vol {pct}%"),
+            Lang::Ru => format!("громкость {pct}%"),
+        }
+    }
+
+    pub fn theme(lang: Lang, name: &str) -> String {
+        match lang {
+            Lang::En => format!("theme: {name}"),
+            Lang::Ru => format!("тема: {name}"),
+        }
+    }
+
+    pub fn scanned(lang: Lang, n: usize) -> String {
+        match lang {
+            Lang::En => format!("scanned {n} tracks"),
+            Lang::Ru => format!("в библиотеке {n} треков"),
+        }
+    }
+
+    pub fn saved(lang: Lang, path: &str) -> String {
+        match lang {
+            Lang::En => format!("saved {path}"),
+            Lang::Ru => format!("сохранено {path}"),
+        }
+    }
+
+    pub fn save_failed(lang: Lang, err: &str) -> String {
+        match lang {
+            Lang::En => format!("save failed: {err}"),
+            Lang::Ru => format!("не сохранилось: {err}"),
+        }
+    }
+
+    pub fn loaded(lang: Lang, name: &str) -> String {
+        match lang {
+            Lang::En => format!("loaded {name}"),
+            Lang::Ru => format!("открыт {name}"),
+        }
+    }
+
+    pub fn load_failed(lang: Lang, err: &str) -> String {
+        match lang {
+            Lang::En => format!("load failed: {err}"),
+            Lang::Ru => format!("не открылось: {err}"),
+        }
+    }
+
+    pub fn deleted(lang: Lang, name: &str) -> String {
+        match lang {
+            Lang::En => format!("deleted {name}"),
+            Lang::Ru => format!("удалён {name}"),
+        }
+    }
+
+    pub fn delete_failed(lang: Lang, err: &str) -> String {
+        match lang {
+            Lang::En => format!("delete failed: {err}"),
+            Lang::Ru => format!("не удалилось: {err}"),
+        }
+    }
+
+    pub fn delete_confirm(lang: Lang, name: &str) -> String {
+        match lang {
+            Lang::En => format!("press d again to delete {name}"),
+            Lang::Ru => format!("ещё раз d — удалить {name}"),
+        }
+    }
+
+    pub fn play_error(lang: Lang, err: &str) -> String {
+        match lang {
+            Lang::En => format!("play error: {err}"),
+            Lang::Ru => format!("ошибка воспроизведения: {err}"),
+        }
+    }
+
+    pub fn seek_failed(lang: Lang) -> &'static str {
+        match lang {
+            Lang::En => "seek failed",
+            Lang::Ru => "перемотка не вышла",
+        }
+    }
+
+    pub fn added(lang: Lang, name: &str) -> String {
+        match lang {
+            Lang::En => format!("+ {name}"),
+            Lang::Ru => format!("+ {name}"),
         }
     }
 
@@ -170,29 +306,27 @@ impl T {
         }
     }
 
-    pub fn temp_playlist(lang: Lang) -> &'static str {
-        match lang {
-            Lang::En => "(temporary queue)",
-            Lang::Ru => "(временная очередь)",
-        }
-    }
-
     pub fn help_lines(lang: Lang) -> Vec<&'static str> {
         match lang {
             Lang::En => vec![
                 "Space       play / pause",
-                "Enter       play selected (or whole library from here)",
+                "Enter       play the visible list from the selection",
                 "n / p       next / previous track",
                 "← / →       seek −5s / +5s",
                 "- / =       volume down / up",
                 "s / S       shuffle / save playlist",
                 "r / F5      cycle repeat / rescan library",
                 "a           add track to queue",
-                "c           clear queue",
-                "l / d       load / delete playlist",
-                "Tab         switch panel (Library / Queue / Playlists)",
-                "/           filter library",
+                "x / Delete  remove the selected queue track",
+                "Shift↑↓     move the selected queue track",
+                "c           clear queue and stop",
+                "l / d       load playlist / delete (press d twice)",
+                "Tab / S-Tab switch panel / previous panel",
+                "'           jump to the playing track",
+                "click       select · double-click plays · click the bar to seek",
+                "/           filter library (updates as you type)",
                 "L           language EN ↔ RU",
+                "t           theme glass ↔ light",
                 "?           show / hide this help",
                 "q           quit",
                 "",
@@ -200,18 +334,23 @@ impl T {
             ],
             Lang::Ru => vec![
                 "Space       играть / пауза",
-                "Enter       играть выбранное (или библиотеку отсюда)",
+                "Enter       играть видимый список от выбранного",
                 "n/т  p/з    следующий / предыдущий",
                 "← / →       −5с / +5с",
                 "- / =       тише / громче",
                 "s/ы  S/Ы    перемешать / сохранить плейлист",
                 "r/к  F5     повтор / перескан",
                 "a/ф         добавить в очередь",
-                "c/с         очистить очередь",
-                "l/д  d/в    загрузить / удалить плейлист",
-                "Tab         панель (Библиотека / Очередь / Плейлисты)",
-                "/ или .     фильтр библиотеки",
+                "x/ч  Delete убрать выбранное из очереди",
+                "Shift↑↓     подвинуть трек в очереди",
+                "c/с         очистить очередь и остановить",
+                "l/д  d/в    открыть плейлист / удалить (d дважды)",
+                "Tab / S-Tab панель / предыдущая панель",
+                "' / э       к играющему треку",
+                "клик        выбрать · двойной клик играет · клик по шкале",
+                "/ или .     фильтр, список сужается сразу",
                 "L/Д         язык EN ↔ RU",
+                "t/е         тема glass ↔ light",
                 "?           показать / скрыть справку",
                 "q/й         выход",
             ],

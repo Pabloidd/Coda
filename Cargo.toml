@@ -13,13 +13,14 @@ dirs = "6"
 lofty = "0.22"
 rand = "0.9"
 ratatui = "0.29"
-rodio = { version = "0.20", default-features = true }
+rodio = { version = "0.20", default-features = false, features = ["symphonia-mp3", "symphonia-flac", "symphonia-vorbis", "symphonia-wav", "symphonia-isomp4", "symphonia-aac", "symphonia-aiff"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+unicode-width = "0.2"
 walkdir = "2"
 fs2 = "0.4"
 souvlaki = "0.8"
-thiserror = "2"
+ctrlc = "3"
 
 [profile.release]
 lto = true
