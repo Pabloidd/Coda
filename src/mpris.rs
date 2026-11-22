@@ -98,9 +98,6 @@ impl MprisBridge {
                     let play_changed = last
                         .as_ref()
                         .is_none_or(|l| l.playing != s.playing || l.paused != s.paused);
-                    let volume_changed = last
-                        .as_ref()
-                        .is_none_or(|l| (l.volume - s.volume).abs() > 0.005);
                     let pos_changed = last.as_ref().is_none_or(|l| {
                         l.position.as_millis().abs_diff(s.position.as_millis()) >= 500
                     });
@@ -138,8 +135,18 @@ impl MprisBridge {
                         };
                         let _ = controls.set_playback(playback);
                     }
-                    if volume_changed {
-                        let _ = controls.set_volume(f64::from(s.volume));
+                    // Only the Linux MPRIS backend exposes volume.
+                    #[cfg(all(
+                        unix,
+                        not(any(target_os = "macos", target_os = "ios", target_os = "android"))
+                    ))]
+                    {
+                        let volume_changed = last
+                            .as_ref()
+                            .is_none_or(|l| (l.volume - s.volume).abs() > 0.005);
+                        if volume_changed {
+                            let _ = controls.set_volume(f64::from(s.volume));
+                        }
                     }
                     last = Some(s);
                 }

@@ -1,6 +1,6 @@
 [package]
 name = "coda"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Minimal terminal music player"
 license = "MIT"
@@ -13,7 +13,7 @@ dirs = "6"
 lofty = "0.22"
 rand = "0.9"
 ratatui = "0.29"
-rodio = { version = "0.20", default-features = false, features = ["symphonia-mp3", "symphonia-flac", "symphonia-vorbis", "symphonia-wav", "symphonia-isomp4", "symphonia-aac", "symphonia-aiff"] }
+rodio = { version = "0.21", default-features = false, features = ["playback", "mp3", "flac", "vorbis", "wav", "mp4", "symphonia-aiff"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 unicode-width = "0.2"

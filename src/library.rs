@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+#[cfg(not(unix))]
+use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -101,19 +102,33 @@ fn scan(root: &Path, force: bool) -> Result<Library> {
     let mut intern: HashMap<Arc<str>, ()> = HashMap::new();
     let mut built: Vec<Arc<Track>> = Vec::new();
     let mut stamps: Vec<Stamp> = Vec::new();
+    #[cfg(unix)]
     let mut seen: HashSetIno = HashSetIno::default();
     let mut dirty = force || cache_path.is_some() && !had_cache;
 
     if root.exists() {
+        #[cfg(unix)]
         let mut dirs_seen: HashMap<(u64, u64), ()> = HashMap::new();
+        #[cfg(not(unix))]
+        let mut dir_paths: HashSet<PathBuf> = HashSet::new();
         let walker = WalkDir::new(root).follow_links(true).into_iter();
         let walker = walker.filter_entry(|entry| {
             if !entry.file_type().is_dir() {
                 return true;
             }
-            match entry.metadata() {
-                Ok(meta) => dirs_seen.insert((meta.dev(), meta.ino()), ()).is_none(),
-                Err(_) => true,
+            #[cfg(unix)]
+            {
+                match entry.metadata().ok().and_then(|meta| file_key(&meta)) {
+                    Some(key) => dirs_seen.insert(key, ()).is_none(),
+                    None => true,
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                match entry.path().canonicalize() {
+                    Ok(path) => dir_paths.insert(path),
+                    Err(_) => true,
+                }
             }
         });
 
@@ -131,9 +146,11 @@ fn scan(root: &Path, force: bool) -> Result<Library> {
             if !meta.is_file() {
                 continue;
             }
-            let ino = (meta.dev(), meta.ino());
-            if !seen.insert(ino) {
-                continue;
+            #[cfg(unix)]
+            if let Some(key) = file_key(&meta) {
+                if !seen.insert(key) {
+                    continue;
+                }
             }
             let mtime = meta
                 .modified()
@@ -220,11 +237,19 @@ fn cmp_ci(a: &str, b: &str) -> std::cmp::Ordering {
     }
 }
 
+#[cfg(unix)]
+fn file_key(meta: &std::fs::Metadata) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    Some((meta.dev(), meta.ino()))
+}
+
+#[cfg(unix)]
 #[derive(Default)]
 struct HashSetIno {
     inner: HashMap<(u64, u64), ()>,
 }
 
+#[cfg(unix)]
 impl HashSetIno {
     fn insert(&mut self, key: (u64, u64)) -> bool {
         self.inner.insert(key, ()).is_none()

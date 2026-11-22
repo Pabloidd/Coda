@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
+use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink};
 
 struct Shared {
     sink: Option<Sink>,
@@ -39,8 +39,7 @@ impl Default for Pulse {
 }
 
 pub struct Player {
-    _stream: OutputStream,
-    handle: OutputStreamHandle,
+    stream: OutputStream,
     inner: Arc<Mutex<Shared>>,
 }
 
@@ -52,12 +51,11 @@ impl Drop for Player {
 
 impl Player {
     pub fn new(volume: f32) -> Result<Self> {
-        let (stream, handle) =
-            OutputStream::try_default().context("no audio output (PipeWire/ALSA)")?;
+        let stream = OutputStreamBuilder::open_default_stream()
+            .context("no audio output (PipeWire/ALSA)")?;
         let volume = quantize_volume(volume);
         Ok(Self {
-            _stream: stream,
-            handle,
+            stream,
             inner: Arc::new(Mutex::new(Shared {
                 sink: None,
                 current: None,
@@ -68,11 +66,8 @@ impl Player {
     }
 
     pub fn play_file(&self, path: &Path) -> Result<()> {
-        let file = File::open(path).with_context(|| format!("open {}", path.display()))?;
-        let source = Decoder::new(BufReader::new(file))
-            .with_context(|| format!("decode {}", path.display()))?;
-
-        let sink = Sink::try_new(&self.handle).context("audio sink")?;
+        let source = decode_file(path)?;
+        let sink = Sink::connect_new(self.stream.mixer());
         let mut g = self.inner.lock().unwrap();
         sink.set_volume(g.volume);
         sink.append(source);
@@ -165,9 +160,8 @@ impl Player {
             return Ok(());
         }
 
-        let file = File::open(&path)?;
-        let source = Decoder::new(BufReader::new(file))?;
-        let sink = Sink::try_new(&self.handle)?;
+        let source = decode_file(&path)?;
+        let sink = Sink::connect_new(self.stream.mixer());
         sink.set_volume(vol);
         sink.append(source);
         let seeked = sink.try_seek(pos).is_ok();
@@ -200,6 +194,12 @@ impl Player {
         };
         self.seek_to(target, duration)
     }
+}
+
+/// `File`'s length has to be passed through. Without it, m4a/mp4 fails inside the demuxer.
+fn decode_file(path: &Path) -> Result<Decoder<BufReader<File>>> {
+    let file = File::open(path).with_context(|| format!("open {}", path.display()))?;
+    Decoder::try_from(file).with_context(|| format!("decode {}", path.display()))
 }
 
 fn quantize_volume(vol: f32) -> f32 {

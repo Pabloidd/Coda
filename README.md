@@ -15,19 +15,25 @@ Minimal terminal music player for local files.
 
 ## Download
 
-The player is a single file on the [release page](https://github.com/Pabloidd/Coda/releases/tag/v0.1.0): **coda-v0.1.0-linux-x86_64**.
+Ready binaries are on the [release page](https://github.com/Pabloidd/Coda/releases/latest). Download the file for your system. GitHub also lists "Source code (zip)" and "Source code (tar.gz)" — those are the code, not a program you can run.
 
-GitHub also puts "Source code (zip)" and "Source code (tar.gz)" on that page. Those are the code, not a program you can run. Download the file named `coda-v0.1.0-linux-x86_64`.
+| System | File |
+| --- | --- |
+| Linux x86_64 | `coda-v0.2.0-linux-x86_64` |
+| macOS Apple Silicon | `coda-v0.2.0-macos-aarch64` |
+| Windows x86_64 | `coda-v0.2.0-windows-x86_64.exe` |
 
 ```bash
-chmod +x coda-v0.1.0-linux-x86_64
-install -m 755 coda-v0.1.0-linux-x86_64 ~/.local/bin/coda
+chmod +x coda-v0.2.0-linux-x86_64
+install -m 755 coda-v0.2.0-linux-x86_64 ~/.local/bin/coda
 coda
 ```
 
-It needs `libasound.so.2`, `libdbus-1.so.3`, and glibc 2.35 or newer (Ubuntu 22.04, Fedora 35, and later). Fedora packages: `alsa-lib` and `dbus`. Debian and Ubuntu: `libasound2` and `libdbus-1-3`.
+On Windows, run `coda-v0.2.0-windows-x86_64.exe`. On macOS the same `install` line works with the `macos-aarch64` file.
 
-`coda-v0.1.0-linux-x86_64.sha256` is the checksum of that same file. Newer versions keep the same name with a new tag, on the [Releases](https://github.com/Pabloidd/Coda/releases) page.
+The Linux build needs `libasound.so.2`, `libdbus-1.so.3`, and glibc 2.35 or newer (Ubuntu 22.04, Fedora 35, and later). Fedora packages: `alsa-lib` and `dbus`. Debian and Ubuntu: `libasound2` and `libdbus-1-3`.
+
+`SHA256SUMS` on the release page is the checksum of each file.
 
 ## Build from source
 
